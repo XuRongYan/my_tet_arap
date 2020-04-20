@@ -10,6 +10,7 @@ set(VTK_IO_LEGACY /usr/local/lib/libvtkIOLegacy-8.2.dylib)
 set(VTK_IO_XML /usr/local/lib/libvtkIOXML-8.2.dylib)
 
 include_directories(/usr/local/include)
+include_directories(/usr/local/include/tetgen)
 include_directories(/usr/local/include/eigen3)
 include_directories(/usr/local/include/SurfaceMesh)
 include_directories(/usr/local/include/vtk-8.2)
@@ -17,6 +18,8 @@ include_directories(/usr/local/include/vtk-8.2)
 add_compile_definitions(CINOLIB_USES_VTK)
 
 aux_source_directory(. DIRS_SRCS)
+
+link_libraries(/usr/local/lib/libtet.a)
 
 add_executable(my_tet_arap ${DIRS_SRCS})
 
