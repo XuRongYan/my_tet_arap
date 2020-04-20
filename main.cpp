@@ -1,14 +1,14 @@
 #include <iostream>
 #include <cinolib/meshes/meshes.h>
 #include <vector>
-#include "arap.h"
+#include "arap_tet.h"
 
 int main() {
     cinolib::Tetmesh<> m("shell_ball_test.vtk");
-    Eigen::Matrix3Xd V;
+    Eigen::Matrix3Xd V, U;
     Eigen::Matrix4Xi TET;
     Eigen::VectorXi fix_b(2);
-    Eigen::MatrixX3d bc(2, 3), U;
+    Eigen::MatrixX3d bc(2, 3);
     std::vector<double > vecV;
     std::vector<int > vecTet;
 
@@ -29,19 +29,24 @@ int main() {
     V = Eigen::Map<Eigen::Matrix3Xd>(vecV.data(), 3, vecV.size() / 3);
     TET = Eigen::Map<Eigen::Matrix4Xi>(vecTet.data(), 4, vecTet.size() / 4);
     auto n = m.vector_vert_normals();
-    fix_b << 0, (V.cols() / 6);
+    fix_b << 728, 1782;
     cinolib::vec3d p1, p2;
-    p1 = m.vert(fix_b(0, 0)) + 3 * n[fix_b(0, 0)];
-    p2 = m.vert(fix_b(1, 0));
+    p1 = m.vert(fix_b[0]) + n[fix_b[0]];
+    p2 = m.vert(fix_b[1]) + n[fix_b[1]];
     bc.row(0) << p1[0], p1[1], p1[2];
     bc.row(1) << p2[0], p2[1], p2[2];
-    xry_mesh::precomputation(V.transpose(), TET.transpose(), fix_b, bc);
-    xry_mesh::solve(U);
-    for (size_t i = 0; i < U.rows(); i++) {
+    std::vector<std::pair<int, Eigen::Vector3d>> boundConstrain;
+    for (size_t i = 0; i < fix_b.rows(); i++) {
+        boundConstrain.emplace_back(fix_b[i], bc.row(i));
+    }
+
+    U = xry_mesh::arap_solve(V, TET, boundConstrain);
+
+    for (size_t i = 0; i < U.cols(); i++ ) {
         auto &p = m.vert(i);
-        p[0] = U(i, 0);
-        p[1] = U(i, 1);
-        p[2] = U(i, 2);
+        p[0] = U(0, i);
+        p[1] = U(1, i);
+        p[2] = U(2, i);
     }
     m.save("arap_test.vtk");
     return 0;
