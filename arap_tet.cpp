@@ -13,6 +13,7 @@ namespace xry_mesh {
                          const Eigen::MatrixX3d &x,
                          std::vector<Eigen::Matrix3d> &deformGrad) {
         Eigen::MatrixXd Df = G * x;
+        assert(G.rows() == TET.cols() * 3 && G.cols() == x.rows());
         deformGrad.clear();
         for (int i = 0; i < TET.cols(); i++) {
             Eigen::Matrix3d df = Df.block(i * 3, 0, 3, 3);
@@ -74,12 +75,9 @@ namespace xry_mesh {
                    const Eigen::MatrixX3d &x,
                    std::vector<Eigen::Matrix3d> &deformGrad,
                    std::vector<Eigen::Matrix3d> &R) {
-        Eigen::MatrixXd Df = G * x;
-        deformGrad.clear();
         for (int i = 0; i < TET.cols(); i++) {
-            Eigen::Matrix3d df = Df.block(i * 3, 0, 3, 3);
-            optimizeRotation(df, R[i]);
-            deformGrad.emplace_back(df);
+            optimizeRotation(deformGrad[i], R[i]);
+
         }
         return 0;
     }
