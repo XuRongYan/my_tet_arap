@@ -8,6 +8,19 @@
 namespace xry_mesh {
     const int w = 1e8;
 
+    int updateDeformGrad(const Eigen::Matrix4Xi &TET,
+                         const Eigen::SparseMatrix<double> &G,
+                         const Eigen::MatrixX3d &x,
+                         std::vector<Eigen::Matrix3d> &deformGrad) {
+        Eigen::MatrixXd Df = G * x;
+        deformGrad.clear();
+        for (int i = 0; i < TET.cols(); i++) {
+            Eigen::Matrix3d df = Df.block(i * 3, 0, 3, 3);
+            deformGrad.emplace_back(df);
+        }
+        return 0;
+    }
+
     double computeVol(const Eigen::Matrix<double, 3, 4> &ideal) {
         Eigen::Vector3d a, b, c;
         a = ideal.col(1) - ideal.col(0);
@@ -42,7 +55,7 @@ namespace xry_mesh {
     }
 
     int optimizeRotation(const Eigen::Matrix3d &J, Eigen::Matrix3d &R) {
-        Eigen::JacobiSVD<Eigen::MatrixXd> svd(J, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::JacobiSVD<Eigen::Matrix3d> svd(J, Eigen::ComputeFullU | Eigen::ComputeFullV);
         R = svd.matrixU() * svd.matrixV().transpose();
         if (fabs(svd.singularValues()(2)) < 1e-8) {
             R.setIdentity();
@@ -164,10 +177,12 @@ namespace xry_mesh {
         precompute(V, TET, bc, idealElem, vols, G, deformGrad, llt);
         double err0 = -1, err1 = 0;
         size_t iter = 0;
+        updateDeformGrad(TET, G, x, deformGrad);
         while (fabs(err1 - err0) > 1e-6 && iter < max_iter) {
             err0 = err1;
             localPhase(TET, G, x, deformGrad, R);
             globalPhase(TET, R, G, bc, vols, llt, x);
+            updateDeformGrad(TET, G, x, deformGrad);
             err1 = computeError(R, deformGrad, vols);
             std::cout << ++iter << ":" << err1 << std::endl;
         }
