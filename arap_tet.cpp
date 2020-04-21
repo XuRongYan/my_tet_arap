@@ -8,6 +8,16 @@
 namespace xry_mesh {
     const int w = 1e8;
 
+    double computeVol(const Eigen::Matrix<double, 3, 4> &ideal) {
+        Eigen::Vector3d a, b, c;
+        a = ideal.col(1) - ideal.col(0);
+        b = ideal.col(2) - ideal.col(0);
+        c = ideal.col(3) - ideal.col(0);
+        double res = (a.cross(b)).dot(c) / 6;
+        assert(res > 0);
+        return res;
+    }
+
     int computeIdeal(const Eigen::Matrix3Xd &V,
                      const Eigen::Matrix4Xi &TET,
                      std::vector<Eigen::Matrix<double, 3, 4>> &idealElem) {
@@ -22,7 +32,8 @@ namespace xry_mesh {
     }
 
     double computeError(const std::vector<Eigen::Matrix3d> &R,
-                        const std::vector<Eigen::Matrix3d> &deformGrad) {
+                        const std::vector<Eigen::Matrix3d> &deformGrad,
+                        const std::vector<double> &areas) {
         double error = 0;
         for (size_t i = 0; i < R.size(); i++) {
             error += (deformGrad[i] - R[i]).squaredNorm();
@@ -46,11 +57,16 @@ namespace xry_mesh {
     }
 
     int localPhase(const Eigen::Matrix4Xi &TET,
-                   const std::vector<Eigen::Matrix3d> &deformGrad,
+                   const Eigen::SparseMatrix<double> &G,
+                   const Eigen::MatrixX3d &x,
+                   std::vector<Eigen::Matrix3d> &deformGrad,
                    std::vector<Eigen::Matrix3d> &R) {
-        Eigen::Matrix3d m;
+        Eigen::MatrixXd Df = G * x;
+        deformGrad.clear();
         for (int i = 0; i < TET.cols(); i++) {
-            optimizeRotation(deformGrad[i], R[i]);
+            Eigen::Matrix3d df = Df.block(i * 3, 0, 3, 3);
+            optimizeRotation(df, R[i]);
+            deformGrad.emplace_back(df);
         }
         return 0;
     }
@@ -59,8 +75,10 @@ namespace xry_mesh {
                     const std::vector<Eigen::Matrix3d> &R,
                     const Eigen::SparseMatrix<double> &G,
                     const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
+                    const std::vector<double > &areas,
                     Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt,
                     Eigen::MatrixX3d &x) {
+
         Eigen::Matrix3Xd bt(3, 3 * TET.cols());
         for (size_t i = 0; i < TET.cols(); i++) {
             for (size_t j = 0; j < 3; j++) {
@@ -79,8 +97,8 @@ namespace xry_mesh {
     int computeGradients(const Eigen::Matrix3Xd &V,
                          const Eigen::Matrix4Xi &TET,
                          const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem,
-                         Eigen::SparseMatrix<double> &G,
-                         std::vector<Eigen::Matrix3d> &deformGrad) {
+                         const std::vector<double> &areas,
+                         Eigen::SparseMatrix<double> &G) {
         Eigen::MatrixXd X(3, 4);
         std::vector<Eigen::Matrix<double, 3, 4>> gradPhis;
         std::vector<Eigen::Triplet<double>> triplets;
@@ -105,10 +123,6 @@ namespace xry_mesh {
             }
         }
 
-        for (size_t i = 0; i < TET.cols(); i++) {
-            deformGrad.emplace_back(gradPhis[i] * idealElem[i].transpose());
-        }
-
         G.resize(3 * TET.cols(), V.cols());
         G.setFromTriplets(triplets.begin(), triplets.end());
         return 0;
@@ -118,12 +132,16 @@ namespace xry_mesh {
                    const Eigen::Matrix4Xi &TET,
                    const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
                    const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem,
+                   std::vector<double> &vols,
                    Eigen::SparseMatrix<double> &G,
                    std::vector<Eigen::Matrix3d> &deformGrad,
                    Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt) {
         std::vector<Eigen::Triplet<double>> triplets;
         Eigen::SparseMatrix<double> L;
-        computeGradients(V, TET, idealElem, G, deformGrad);
+        for (const auto & ideal : idealElem) {
+            vols.push_back(computeVol(ideal));
+        }
+        computeGradients(V, TET, idealElem, vols, G);
         L = G.transpose() * G;
         for (const auto &pair : bc) {
             L.coeffRef(pair.first, pair.first) += w;
@@ -140,16 +158,17 @@ namespace xry_mesh {
         Eigen::SparseMatrix<double> G;  //梯度算子
         std::vector<Eigen::Matrix3d> deformGrad;
         std::vector<Eigen::Matrix3d> R(TET.cols());
+        std::vector<double> areas;
         Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> llt;
         Eigen::MatrixX3d x = V.transpose();
-        precompute(V, TET, bc, idealElem, G, deformGrad, llt);
+        precompute(V, TET, bc, idealElem, areas,G, deformGrad, llt);
         double err0 = -1, err1 = 0;
         size_t iter = 0;
         while (fabs(err1 - err0) > 1e-6 && iter < max_iter) {
             err0 = err1;
-            localPhase(TET, deformGrad, R);
-            globalPhase(TET, R, G, bc, llt, x);
-            err1 = computeError(R, deformGrad);
+            localPhase(TET, G, x, deformGrad, R);
+            globalPhase(TET, R, G, bc, areas, llt, x);
+            err1 = computeError(R, deformGrad, areas);
             std::cout << ++iter << ":" << err1 << std::endl;
         }
         return x.transpose();
