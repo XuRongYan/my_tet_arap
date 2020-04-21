@@ -77,7 +77,6 @@ namespace xry_mesh {
                    std::vector<Eigen::Matrix3d> &R) {
         for (int i = 0; i < TET.cols(); i++) {
             optimizeRotation(deformGrad[i], R[i]);
-
         }
         return 0;
     }
@@ -149,14 +148,19 @@ namespace xry_mesh {
                    Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt) {
         std::vector<Eigen::Triplet<double>> triplets;
         Eigen::SparseMatrix<double> L;
+        //compute vols
         for (const auto & ideal : idealElem) {
             vols.push_back(computeVol(ideal));
         }
+        //compute gradient operator(size = 3m * n)
         computeGradients(V, TET, idealElem, vols, G);
+        //L = GtG
         L = G.transpose() * G;
+        //add bound constrains
         for (const auto &pair : bc) {
             L.coeffRef(pair.first, pair.first) += w;
         }
+        //cholesky decomposition
         llt.compute(L);
         return 0;
     }
@@ -166,6 +170,7 @@ namespace xry_mesh {
                                 const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
                                 const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem) {
         const int max_iter = 100;
+        assert(idealElem.size() == TET.cols());
         Eigen::SparseMatrix<double> G;  //梯度算子
         std::vector<Eigen::Matrix3d> deformGrad;
         std::vector<Eigen::Matrix3d> R(TET.cols());
@@ -173,13 +178,18 @@ namespace xry_mesh {
         Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> llt;
         Eigen::MatrixX3d x = V.transpose();
         precompute(V, TET, bc, idealElem, vols, G, deformGrad, llt);
+
         double err0 = -1, err1 = 0;
         size_t iter = 0;
+
         updateDeformGrad(TET, G, x, deformGrad);
         while (fabs(err1 - err0) > 1e-6 && iter < max_iter) {
             err0 = err1;
+
             localPhase(TET, G, x, deformGrad, R);
             globalPhase(TET, R, G, bc, vols, llt, x);
+
+            //update deformation gradients
             updateDeformGrad(TET, G, x, deformGrad);
             err1 = computeError(R, deformGrad, vols);
             std::cout << ++iter << ":" << err1 << std::endl;
