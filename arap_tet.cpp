@@ -33,7 +33,7 @@ namespace xry_mesh {
 
     double computeError(const std::vector<Eigen::Matrix3d> &R,
                         const std::vector<Eigen::Matrix3d> &deformGrad,
-                        const std::vector<double> &areas) {
+                        const std::vector<double> &vols) {
         double error = 0;
         for (size_t i = 0; i < R.size(); i++) {
             error += (deformGrad[i] - R[i]).squaredNorm();
@@ -158,17 +158,17 @@ namespace xry_mesh {
         Eigen::SparseMatrix<double> G;  //梯度算子
         std::vector<Eigen::Matrix3d> deformGrad;
         std::vector<Eigen::Matrix3d> R(TET.cols());
-        std::vector<double> areas;
+        std::vector<double> vols;
         Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> llt;
         Eigen::MatrixX3d x = V.transpose();
-        precompute(V, TET, bc, idealElem, areas,G, deformGrad, llt);
+        precompute(V, TET, bc, idealElem, vols, G, deformGrad, llt);
         double err0 = -1, err1 = 0;
         size_t iter = 0;
         while (fabs(err1 - err0) > 1e-6 && iter < max_iter) {
             err0 = err1;
             localPhase(TET, G, x, deformGrad, R);
-            globalPhase(TET, R, G, bc, areas, llt, x);
-            err1 = computeError(R, deformGrad, areas);
+            globalPhase(TET, R, G, bc, vols, llt, x);
+            err1 = computeError(R, deformGrad, vols);
             std::cout << ++iter << ":" << err1 << std::endl;
         }
         return x.transpose();
