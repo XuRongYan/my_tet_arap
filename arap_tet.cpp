@@ -75,7 +75,7 @@ namespace xry_mesh {
                     const std::vector<Eigen::Matrix3d> &R,
                     const Eigen::SparseMatrix<double> &G,
                     const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
-                    const std::vector<double > &areas,
+                    const std::vector<double > &vols,
                     Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt,
                     Eigen::MatrixX3d &x) {
 
@@ -97,7 +97,7 @@ namespace xry_mesh {
     int computeGradients(const Eigen::Matrix3Xd &V,
                          const Eigen::Matrix4Xi &TET,
                          const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem,
-                         const std::vector<double> &areas,
+                         const std::vector<double> &vols,
                          Eigen::SparseMatrix<double> &G) {
         Eigen::MatrixXd X(3, 4);
         std::vector<Eigen::Matrix<double, 3, 4>> gradPhis;
