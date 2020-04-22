@@ -47,12 +47,12 @@ namespace xry_mesh {
 
     double computeError(const std::vector<Eigen::Matrix3d> &R,
                         const std::vector<Eigen::Matrix3d> &deformGrad,
-                        const std::vector<double> &vols) {
+                        const Eigen::VectorXd &vols) {
         double error = 0;
         for (size_t i = 0; i < R.size(); i++) {
-            error += (deformGrad[i] - R[i]).squaredNorm();
+            error += vols[i] * (deformGrad[i] - R[i]).squaredNorm();
         }
-        return error;
+        return error / vols.sum();
     }
 
     int optimizeRotation(const Eigen::Matrix3d &J, Eigen::Matrix3d &R) {
@@ -85,18 +85,19 @@ namespace xry_mesh {
                     const std::vector<Eigen::Matrix3d> &R,
                     const Eigen::SparseMatrix<double> &G,
                     const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
-                    const std::vector<double > &vols,
+                    const Eigen::VectorXd &vols,
                     Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt,
                     Eigen::MatrixX3d &x) {
 
         Eigen::Matrix3Xd bt(3, 3 * TET.cols());
         for (size_t i = 0; i < TET.cols(); i++) {
             for (size_t j = 0; j < 3; j++) {
-                bt.col(3 * i + j) = R[i].col(j);
+                bt.col(3 * i + j) = sqrt(vols[i]) * R[i].col(j);
             }
         }
 
-        Eigen::MatrixX3d Gtb = G.transpose() * bt.transpose();
+        Eigen::MatrixX3d Gtb = (bt * G).transpose();
+
         for (const auto & pair : bc) {
             Gtb.row(pair.first) += w * pair.second;
         }
@@ -107,7 +108,7 @@ namespace xry_mesh {
     int computeGradients(const Eigen::Matrix3Xd &V,
                          const Eigen::Matrix4Xi &TET,
                          const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem,
-                         const std::vector<double> &vols,
+                         const Eigen::VectorXd &vols,
                          Eigen::SparseMatrix<double> &G) {
         Eigen::MatrixXd X(3, 4);
         std::vector<Eigen::Matrix<double, 3, 4>> gradPhis;
@@ -128,7 +129,7 @@ namespace xry_mesh {
         for (size_t i = 0; i < TET.cols(); i++) {
             for (size_t j = 0; j < 4; j++) {
                 for (size_t k = 0; k < 3; k++) {
-                    triplets.emplace_back(3 * i + k, TET(j, i), gradPhis[i](k, j));
+                    triplets.emplace_back(3 * i + k, TET(j, i), sqrt(vols[i]) * gradPhis[i](k, j));
                 }
             }
         }
@@ -142,15 +143,16 @@ namespace xry_mesh {
                    const Eigen::Matrix4Xi &TET,
                    const std::vector<std::pair<int, Eigen::Vector3d>> &bc,
                    const std::vector<Eigen::Matrix<double, 3, 4>> &idealElem,
-                   std::vector<double> &vols,
+                   Eigen::VectorXd &vols,
                    Eigen::SparseMatrix<double> &G,
                    std::vector<Eigen::Matrix3d> &deformGrad,
                    Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> &llt) {
         std::vector<Eigen::Triplet<double>> triplets;
         Eigen::SparseMatrix<double> L;
         //compute vols
-        for (const auto & ideal : idealElem) {
-            vols.push_back(computeVol(ideal));
+        vols.resize(TET.cols());
+        for (size_t i = 0; i < idealElem.size(); i++) {
+            vols[i] = computeVol(idealElem[i]);
         }
         //compute gradient operator(size = 3m * n)
         computeGradients(V, TET, idealElem, vols, G);
@@ -174,7 +176,7 @@ namespace xry_mesh {
         Eigen::SparseMatrix<double> G;  //梯度算子
         std::vector<Eigen::Matrix3d> deformGrad;
         std::vector<Eigen::Matrix3d> R(TET.cols());
-        std::vector<double> vols;
+        Eigen::VectorXd vols;
         Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> llt;
         Eigen::MatrixX3d x = V.transpose();
         precompute(V, TET, bc, idealElem, vols, G, deformGrad, llt);
@@ -188,7 +190,6 @@ namespace xry_mesh {
 
             localPhase(TET, G, x, deformGrad, R);
             globalPhase(TET, R, G, bc, vols, llt, x);
-
             //update deformation gradients
             updateDeformGrad(TET, G, x, deformGrad);
             err1 = computeError(R, deformGrad, vols);
