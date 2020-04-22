@@ -32,6 +32,9 @@ int main() {
     for (size_t i = 49; i <= 97; i++) {
         boundConstrain.emplace_back(i, R * V.col(i));
     }
+    for (size_t i = 0; i <=48; i++) {
+        boundConstrain.emplace_back(i, V.col(i));
+    }
     xry_mesh::readTetmesh("tri2tet.vtk", V, TET);
     U = xry_mesh::arap_solve(V, TET, boundConstrain);
     std::vector<double> vecV;
